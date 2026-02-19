@@ -5,7 +5,8 @@
 #  Run as: sudo bash bugbounty_setup.sh
 # =============================================================================
 
-set -e
+set -uo pipefail
+# Note: NOT using 'set -e' so that individual tool failures don't abort the whole install
 
 # ── Colours ──────────────────────────────────────────────────────────────────
 RED='\033[0;31m'
@@ -50,8 +51,21 @@ info "Full log saved to $LOG"
 # =============================================================================
 section "0. System Update & Base Dependencies"
 
+# Helper: install packages one-by-one so a missing package doesn't abort everything
+safe_apt_install() {
+  for pkg in "$@"; do
+    if apt-get install -y "$pkg" &>/dev/null; then
+      success "  $pkg"
+    else
+      warn "  $pkg not found in repos — skipping (non-critical)"
+    fi
+  done
+}
+
 apt-get update -y && apt-get upgrade -y
-apt-get install -y \
+
+info "Installing core packages..."
+safe_apt_install \
   curl wget git unzip tar build-essential \
   python3 python3-pip python3-venv pipx \
   ruby ruby-dev \
@@ -60,10 +74,30 @@ apt-get install -y \
   whois dnsutils net-tools \
   chromium chromium-driver \
   tmux zsh jq \
-  openjdk-17-jre \
   libxml2-utils \
-  screenfetch neofetch \
   apt-transport-https ca-certificates gnupg lsb-release
+
+# ── Java: try multiple package names for Kali/Ubuntu/Parrot compatibility ──
+info "Installing Java..."
+if apt-get install -y default-jre &>/dev/null; then
+  success "Java (default-jre) installed"
+elif apt-get install -y openjdk-17-jre &>/dev/null; then
+  success "Java (openjdk-17-jre) installed"
+elif apt-get install -y openjdk-21-jre &>/dev/null; then
+  success "Java (openjdk-21-jre) installed"
+else
+  warn "Java not installed — Burp Suite JAR will not work without it. Install manually."
+fi
+
+# ── System info tools: neofetch removed from Kali, use fastfetch ──
+info "Installing system info tool..."
+if apt-get install -y fastfetch &>/dev/null; then
+  success "fastfetch installed"
+elif apt-get install -y neofetch &>/dev/null; then
+  success "neofetch installed"
+else
+  warn "No system info tool found (cosmetic only, not required)"
+fi
 
 success "Base dependencies installed"
 
